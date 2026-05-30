@@ -13,44 +13,53 @@ log() { echo "[$(date '+%H:%M:%S')] $*"; }
 # === 处理一篇笔记 ===
 process_note() {
     local title="$1"
-    local safe_name pdf
-    safe_name=$(echo "$title" | tr '/' '_' | tr ':' '_' | tr -d '
-')
-    pdf="/tmp/yx2kindle_tmp_$$.pdf"  # 先用临时文件避免中文路径问题
-    
     log "=== $title ==="
     
-    # 1. yinxiang-to-pdf
-    log "Generating PDF..."
+    # 安全文件名：保留原标题，超长时截断加...
+    local safe_name
+    if [ ${#title} -gt 60 ]; then
+        safe_name="${title:0:57}..."
+    else
+        safe_name="$title"
+    fi
+    safe_name=$(echo "$safe_name" | tr '/' '／' | tr ':' '：')
+    local pdf="$HOME/Desktop/${safe_name}.pdf"
     local tmp_pdf="/tmp/yx2kindle_$$.pdf"
+    
+    # 1. yinxiang-to-pdf
+    log "  → PDF..."
     if ! python3 "$SKILL_DIR/yinxiang-to-pdf/scripts/export_note_to_pdf.py" "$title" --output "$tmp_pdf" 2>&1; then
-        log "ERROR: PDF generation failed"
+        log "  ✗ PDF 失败"
         return 1
     fi
     
-    # Move to desktop with safe name
+    # 移到桌面（使用原标题作为文件名）
     mv "$tmp_pdf" "$pdf"
+    log "  ✓ PDF: $pdf"
     
     # 2. send2kindle
-    log "Sending to Kindle..."
+    log "  → Kindle..."
     if ! bash "$SKILL_DIR/send2kindle/scripts/send2kindle.sh" "$pdf" 2>&1; then
-        log "ERROR: Send to Kindle failed"
+        log "  ✗ Kindle 发送失败"
         return 1
     fi
+    log "  ✓ 已发送到 Kindle"
     
     # 3. 更新标签
-    log "Updating tags..."
+    log "  → 标签..."
     osascript -e "
     tell application \"印象笔记\"
-        set noteList to find notes \"intitle:\\\"${title}\\\" tag:${WATCH_TAG}\"
-        if (count of noteList) > 0 then
-            set theNote to item 1 of noteList
-            assign tag \"${DONE_TAG}\" to theNote
-        end if
+        set tkList to find notes \"tag:${WATCH_TAG}\"
+        repeat with n in tkList
+            if title of n contains \"$title\" then
+                assign tag \"${DONE_TAG}\" to n
+                unassign tag \"${WATCH_TAG}\" from n
+                exit repeat
+            end if
+        end repeat
     end tell
     " 2>/dev/null
-    
-    log "Done: $title"
+    log "  ✓ 标签已更新"
 }
 
 # === 处理一次 ===
@@ -68,7 +77,7 @@ process_once() {
     " 2>/dev/null)
     
     if [ -z "$titles" ]; then
-        log "No notes with tag $WATCH_TAG"
+        log "没有待处理笔记"
         return
     fi
     
@@ -77,13 +86,11 @@ process_once() {
         [ -z "$title" ] && continue
         process_note "$title" && count=$((count + 1))
     done
-    
-    log "Processed $count notes"
 }
 
 # === Watch ===
 process_watch() {
-    log "Watching for tag '$WATCH_TAG' every 60s"
+    log "监控标签 '$WATCH_TAG' (每 60 秒)"
     while true; do
         local n
         n=$(osascript -e "
