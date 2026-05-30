@@ -13,18 +13,23 @@ log() { echo "[$(date '+%H:%M:%S')] $*"; }
 # === 处理一篇笔记 ===
 process_note() {
     local title="$1"
-    local safe_name
-    safe_name=$(echo "$title" | tr '/' '_' | tr ':' '_' | head -c 50)
-    local pdf="$HOME/Desktop/${safe_name}.pdf"
+    local safe_name pdf
+    safe_name=$(echo "$title" | tr '/' '_' | tr ':' '_' | tr -d '
+')
+    pdf="/tmp/yx2kindle_tmp_$$.pdf"  # 先用临时文件避免中文路径问题
     
     log "=== $title ==="
     
     # 1. yinxiang-to-pdf
     log "Generating PDF..."
-    if ! python3 "$SKILL_DIR/yinxiang-to-pdf/scripts/export_note_to_pdf.py" "$title" --output "$pdf" 2>&1; then
+    local tmp_pdf="/tmp/yx2kindle_$$.pdf"
+    if ! python3 "$SKILL_DIR/yinxiang-to-pdf/scripts/export_note_to_pdf.py" "$title" --output "$tmp_pdf" 2>&1; then
         log "ERROR: PDF generation failed"
         return 1
     fi
+    
+    # Move to desktop with safe name
+    mv "$tmp_pdf" "$pdf"
     
     # 2. send2kindle
     log "Sending to Kindle..."
