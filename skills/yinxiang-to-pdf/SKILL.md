@@ -26,13 +26,16 @@ embeds images as base64, and prints to PDF via Chrome headless.
 2. **Export attachments** — All images are written to a temp directory via AppleScript
 3. **Clean HTML** — Strips `display:none`, `<style>`, `<script>`, `<link>`, `<svg>` tags
 4. **Embed images** — Replaces `<img src>` with base64 data URIs (preserves original order)
-5. **Chrome print** — Uses Chrome headless `--print-to-pdf` with an anchor div workaround for the blank-first-page bug
+5. **Chrome print** — Uses Chrome headless `--print-to-pdf` with a 45s timeout; Chrome process is explicitly killed on timeout
 6. **Remove blanks** — Strips PDF pages with < 10 text operations and no images
+7. **Cleanup** — All temp files (HTML, images, temp dirs) are removed on exit, even on error
 
 ## Important Details
 
 - Requires Google Chrome installed at `/Applications/Google Chrome.app`
+- Chrome is launched via `subprocess.Popen` with explicit `wait()` + `kill()` on timeout — no zombie processes
 - The anchor div (`<div class="anchor">.</div>`) with 1px height works around a Chrome headless bug where the first page renders blank
 - Attachment filenames from AppleScript may show as "missing value" — the script detects actual MIME types via `file --mime-type`
 - PDF is vector text, suitable for Kindle and other e-readers
 - **PDF page counting**: Chrome generates nested `/Pages` trees (not just a flat `/Kids` array). The `count_pdf_pages()` function recursively traverses all `/Pages` objects via a stack to correctly count every leaf `/Page`. A flat-read approach would undercount (e.g., 8 instead of 42).
+- All temp files and directories are cleaned up in a `try/finally` block — no `/tmp/ynote_imgs_*` residue
